@@ -10,8 +10,8 @@ let image, shouldCopy = true;
 
 async function cli(args) {
     if (args.includes('-d')) {
-        args.splice(args.indexOf('-d'), 1)
-        shouldCopy = false
+        args.splice(args.indexOf('-d'), 1);
+        shouldCopy = false;
     }
 
     // check empty arguments at last
@@ -25,11 +25,10 @@ async function cli(args) {
         console.log('ARGS:')
         console.log('    -d         Do not copy text to clipboard')
         console.log('    -h, --help Show this message')
-        return
+        return;
     }
 
-    // hope the last argument is the image
-    image = args[0]
+    image = args.join(' ');
 
     // get path to cookies file (should be in the same directory as this script)
     const moduleUrl = fileURLToPath(import.meta.url);
