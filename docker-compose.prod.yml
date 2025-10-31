@@ -1,13 +1,11 @@
 version: '3.8'
 
 services:
-  vg-ocr-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+   vg-ocr-api:
+    image: tinhthanh/vg-ocr-api:v1.0.1
     container_name: vg-ocr-api
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
