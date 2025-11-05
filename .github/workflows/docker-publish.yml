@@ -1,34 +1,48 @@
-name: Build and Push Docker Image
+name: Build and Push Multi-Platform Docker Image to Docker Hub
 
+# Kích hoạt workflow khi có push code lên nhánh "main"
 on:
   push:
     branches: [ "main" ]
 
 jobs:
   build-and-push:
+    # Chạy trên runner Ubuntu mới nhất của GitHub
     runs-on: ubuntu-latest
     
-    env:
-      # Lấy giá trị từ VARIABLE mới tạo, không phải SECRET
-      REGISTRY: ${{ vars.REGISTRY_URL }}
-      IMAGE_NAME: vg-ocr-api
-
     steps:
+      # Bước 1: Checkout code từ repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Log in to the Private Registry
+      # Bước 2: Cài đặt QEMU để giả lập các kiến trúc CPU khác nhau
+      # Đây là bước cần thiết cho build đa nền tảng trên runner amd64
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      # Bước 3: Cài đặt Docker Buildx, công cụ build mạnh mẽ
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # Bước 4: Đăng nhập vào Docker Hub
+      # Sử dụng các secret đã được cấu hình trong repository
+      - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.REGISTRY_USER }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      # Bước 5: Build và push image đa nền tảng
+      - name: Build and push
         uses: docker/build-push-action@v4
         with:
           context: .
+          # Kích hoạt tính năng build đa nền tảng
+          platforms: linux/amd64,linux/arm64
+          # Đẩy image lên registry sau khi build thành công
           push: true
+          # Định dạng các tag cho image
+          # Ví dụ: vetgo/vg-ocr-api:latest, vetgo/vg-ocr-api:<mã-commit>
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/vg-ocr-api:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/vg-ocr-api:${{ github.sha }}
