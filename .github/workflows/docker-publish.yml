@@ -1,6 +1,5 @@
 name: Build and Push Docker Image
 
-# Kích hoạt workflow khi có push vào nhánh 'main'
 on:
   push:
     branches: [ "main" ]
@@ -12,6 +11,30 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+
+      # === BƯỚC DEBUG MỚI ĐƯỢC THÊM VÀO ===
+      - name: Debug secrets availability
+        run: |
+          if [ -z "${{ secrets.REGISTRY_URL }}" ]; then
+            echo "ERROR: REGISTRY_URL secret is NOT set or empty."
+            exit 1
+          else
+            echo "SUCCESS: REGISTRY_URL is set."
+          fi
+          
+          if [ -z "${{ secrets.REGISTRY_USER }}" ]; then
+            echo "ERROR: REGISTRY_USER secret is NOT set or empty."
+            exit 1
+          else
+            echo "SUCCESS: REGISTRY_USER is set."
+          fi
+          
+          if [ -z "${{ secrets.REGISTRY_PASSWORD }}" ]; then
+            echo "ERROR: REGISTRY_PASSWORD secret is NOT set or empty."
+            exit 1
+          else
+            echo "SUCCESS: REGISTRY_PASSWORD is set."
+          fi
 
       - name: Log in to the Private Registry
         uses: docker/login-action@v2
@@ -25,7 +48,6 @@ jobs:
         with:
           context: .
           push: true
-          # Gán tag cho image, bao gồm tag 'latest' và tag theo mã commit
           tags: |
             ${{ secrets.REGISTRY_URL }}/vg-ocr-api:latest
             ${{ secrets.REGISTRY_URL }}/vg-ocr-api:${{ github.sha }}
