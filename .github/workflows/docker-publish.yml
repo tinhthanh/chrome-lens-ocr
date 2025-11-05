@@ -8,9 +8,9 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     
-    # Định nghĩa biến môi trường cho toàn bộ job này
     env:
-      REGISTRY: ${{ secrets.REGISTRY_URL }}
+      # Lấy giá trị từ VARIABLE mới tạo, không phải SECRET
+      REGISTRY: ${{ vars.REGISTRY_URL }}
       IMAGE_NAME: vg-ocr-api
 
     steps:
@@ -20,7 +20,6 @@ jobs:
       - name: Log in to the Private Registry
         uses: docker/login-action@v2
         with:
-          # Sử dụng biến môi trường đã định nghĩa ở trên
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.REGISTRY_USER }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
@@ -30,7 +29,6 @@ jobs:
         with:
           context: .
           push: true
-          # Sử dụng các biến môi trường để tạo tag, cú pháp rõ ràng và ổn định hơn
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
