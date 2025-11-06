@@ -4,6 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chrome Lens OCR - Visual Test Interface</title>
+    <script>
+        // Tự động phát hiện base path và set base tag
+        (function() {
+            const path = window.location.pathname;
+            // Loại bỏ /index.html nếu có
+            const cleanPath = path.replace(/\/index\.html$/, '');
+            // Nếu path không phải '/' thì set base tag
+            if (cleanPath && cleanPath !== '/') {
+                const base = document.createElement('base');
+                base.href = cleanPath.endsWith('/') ? cleanPath : cleanPath + '/';
+                document.head.appendChild(base);
+            }
+        })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .image-container {
@@ -154,6 +168,6 @@
     </div>
 
     <!-- Script tự động phát hiện base path -->
-    <script src="./script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
