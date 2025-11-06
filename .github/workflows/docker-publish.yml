@@ -65,9 +65,11 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           
           script: |
+            # Dừng script ngay lập tức nếu có bất kỳ lệnh nào thất bại
+            set -e
+
             echo "🚀 Starting deployment for service: ${{ env.SERVICE_NAME }}"
             
-            # Tối ưu hóa: Sử dụng biến SERVICE_NAME cho đường dẫn
             TARGET_DIR="/home/vetgo/cicd/app_services/repo/${{ env.SERVICE_NAME }}"
             
             echo "Ensuring deployment directory exists at $TARGET_DIR"
@@ -78,11 +80,17 @@ jobs:
             
             cd $TARGET_DIR
             
-            # MỚI: Truyền cả SERVICE_NAME vào môi trường của server
-            export DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
-            export SERVICE_NAME=${{ env.SERVICE_NAME }}
+            # TẠO FILE .env ĐỂ DOCKER-COMPOSE TỰ ĐỘNG ĐỌC BIẾN
+            # Đây là cách làm ổn định và được khuyến nghị nhất.
+            echo "Creating .env file for Docker Compose..."
+            cat << EOF > .env
+            # File này được tạo tự động bởi GitHub Actions
+            DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
+            SERVICE_NAME=${{ env.SERVICE_NAME }}
+            EOF
             
             echo " pulling latest image from DockerHub..."
+            # Docker Compose sẽ tự động đọc file .env trong cùng thư mục
             docker-compose -f docker-compose.prod.yml pull
             
             echo " starting containers with the new image..."
