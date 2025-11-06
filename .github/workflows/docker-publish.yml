@@ -38,7 +38,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/vg-ocr-api:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/vg-ocr-api:${{ github.sha }}
 
-  # === JOB 2: DEPLOY IMAGE LÊN SERVER (PHIÊN BẢN CHÍNH XÁC) ===
+  # === JOB 2: DEPLOY IMAGE LÊN SERVER (SỬ DỤNG STEP OUTPUTS - CÁCH LÀM ĐÚNG) ===
   deploy:
     name: Deploy to Production Server
     needs: build-and-push
@@ -49,15 +49,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # BƯỚC 2: Đọc nội dung file và lưu vào biến môi trường (ĐÃ SỬA LỖI CÚ PHÁP)
-      - name: Read docker-compose.prod.yml content
+      # BƯỚC 2: Đọc nội dung file và lưu vào một STEP OUTPUT
+      # Đây là phương pháp chính xác để truyền dữ liệu nhiều dòng giữa các bước.
+      - name: Read docker-compose.prod.yml content to an output variable
+        id: read_file # Đặt ID cho bước này để có thể tham chiếu đến output của nó
         run: |
-          # Dùng cú pháp chuẩn: echo "VARIABLE_NAME<<DELIMITER" >> $GITHUB_ENV
-          echo "DOCKER_COMPOSE_CONTENT<<EOF" >> $GITHUB_ENV
-          cat docker-compose.prod.yml >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          # Sử dụng cú pháp GITHUB_OUTPUT để tạo một output tên là 'content'
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          cat docker-compose.prod.yml >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-      # Bước 3: SSH vào server và thực thi các lệnh deploy
+      # Bước 3: SSH vào server và sử dụng output từ bước trước
       - name: Deploy to Server via SSH
         uses: appleboy/ssh-action@master
         with:
@@ -74,9 +76,10 @@ jobs:
             echo "Ensuring deployment directory exists at $TARGET_DIR"
             mkdir -p $TARGET_DIR
             
-            # Ghi nội dung file từ biến môi trường $DOCKER_COMPOSE_CONTENT
+            # Ghi nội dung file từ output của bước 'read_file'
             echo "Writing docker-compose.prod.yml from source code..."
-            echo "$DOCKER_COMPOSE_CONTENT" > $TARGET_DIR/docker-compose.prod.yml
+            # Tham chiếu đến output bằng cú pháp: steps.<step_id>.outputs.<output_name>
+            echo "${{ steps.read_file.outputs.content }}" > $TARGET_DIR/docker-compose.prod.yml
             
             cd $TARGET_DIR
             
