@@ -38,7 +38,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/vg-ocr-api:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/vg-ocr-api:${{ github.sha }}
 
-  # === JOB 2: DEPLOY IMAGE LÊN SERVER (PHIÊN BẢN ĐÃ SỬA LỖI) ===
+  # === JOB 2: DEPLOY IMAGE LÊN SERVER (PHIÊN BẢN CHÍNH XÁC) ===
   deploy:
     name: Deploy to Production Server
     needs: build-and-push
@@ -49,13 +49,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # BƯỚC MỚI: Đọc nội dung file và lưu vào biến môi trường
-      # Đây là cách làm đúng để xử lý file trong workflow
+      # BƯỚC 2: Đọc nội dung file và lưu vào biến môi trường (ĐÃ SỬA LỖI CÚ PHÁP)
       - name: Read docker-compose.prod.yml content
-        id: read_file
         run: |
-          # Dùng cú pháp đặc biệt của GitHub Actions để tạo biến môi trường DOCKER_COMPOSE_CONTENT
-          # cho các bước tiếp theo. Kỹ thuật "here document" (<<EOF) đảm bảo nội dung nhiều dòng được giữ nguyên.
+          # Dùng cú pháp chuẩn: echo "VARIABLE_NAME<<DELIMITER" >> $GITHUB_ENV
           echo "DOCKER_COMPOSE_CONTENT<<EOF" >> $GITHUB_ENV
           cat docker-compose.prod.yml >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -69,7 +66,6 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           
-          # Script không thay đổi, nó sẽ sử dụng biến môi trường đã được tạo ở bước trên
           script: |
             echo "🚀 Starting deployment..."
             
@@ -78,9 +74,8 @@ jobs:
             echo "Ensuring deployment directory exists at $TARGET_DIR"
             mkdir -p $TARGET_DIR
             
-            # Ghi nội dung file từ biến môi trường đã được đọc ở bước trước
+            # Ghi nội dung file từ biến môi trường $DOCKER_COMPOSE_CONTENT
             echo "Writing docker-compose.prod.yml from source code..."
-            # Biến DOCKER_COMPOSE_CONTENT giờ đã có sẵn để sử dụng
             echo "$DOCKER_COMPOSE_CONTENT" > $TARGET_DIR/docker-compose.prod.yml
             
             cd $TARGET_DIR
