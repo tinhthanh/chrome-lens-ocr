@@ -65,10 +65,26 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           
           script: |
+            # Dừng script ngay lập tức nếu có bất kỳ lệnh nào thất bại
             set -e
 
             echo "🚀 Starting deployment for service: ${{ env.SERVICE_NAME }}"
             
+            # TỰ ĐỘNG PHÁT HIỆN LỆNH DOCKER COMPOSE
+            # Kiểm tra xem 'docker compose' (V2) có tồn tại không
+            if docker compose version &>/dev/null; then
+              COMPOSE_CMD="docker compose"
+              echo "✅ Docker Compose V2 detected. Using 'docker compose' command."
+            # Nếu không, kiểm tra 'docker-compose' (V1)
+            elif docker-compose --version &>/dev/null; then
+              COMPOSE_CMD="docker-compose"
+              echo "⚠️ Docker Compose V2 not found. Falling back to V1 'docker-compose' command."
+            # Nếu cả hai đều không có, báo lỗi và thoát
+            else
+              echo "❌ ERROR: Neither 'docker compose' (V2) nor 'docker-compose' (V1) are installed on the server."
+              exit 1
+            fi
+
             TARGET_DIR="/home/vetgo/cicd/app_services/repo/${{ env.SERVICE_NAME }}"
             
             echo "Ensuring deployment directory exists at $TARGET_DIR"
@@ -86,10 +102,12 @@ jobs:
             EOF
             
             echo " pulling latest image from DockerHub..."
-            docker compose -f docker-compose.prod.yml pull
+            # Sử dụng biến COMPOSE_CMD đã được phát hiện ở trên
+            $COMPOSE_CMD -f docker-compose.prod.yml pull
             
             echo " starting containers with the new image..."
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            # Sử dụng biến COMPOSE_CMD, thêm --env-file để tương thích tốt hơn với V1
+            $COMPOSE_CMD --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
             
             echo " cleaning up old images..."
             docker image prune -f
