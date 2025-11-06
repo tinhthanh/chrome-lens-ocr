@@ -86,12 +86,10 @@ jobs:
             EOF
             
             echo " pulling latest image from DockerHub..."
-            # QUAY LẠI DÙNG V1 VÀ THÊM --env-file ĐỂ ĐẢM BẢO
-            docker-compose --env-file .env -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml pull
             
             echo " starting containers with the new image..."
-            # QUAY LẠI DÙNG V1 VÀ THÊM --env-file
-            docker-compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
             
             echo " cleaning up old images..."
             docker image prune -f

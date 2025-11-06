@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  ${SERVICE_NAME}:
+  app:
     image: ${DOCKERHUB_USERNAME}/${SERVICE_NAME}:latest
     container_name: ${SERVICE_NAME}
     restart: unless-stopped
@@ -26,7 +26,8 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.${SERVICE_NAME}.rule=(Host(`cluster.phanmemvet.vn`) || Host(`cluster.petplus.vn`)) && PathPrefix(`/${SERVICE_NAME}`)"
       - "traefik.http.routers.${SERVICE_NAME}.entrypoints=web"
-      - "traefik.http.services.${SERVICE_NAME}-service.loadbalancer.server.port=3000"
+      - "traefik.http.services.${SERVICE_NAME}.loadbalancer.server.service=app"
+      - "traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port=3000"
       - "traefik.http.routers.${SERVICE_NAME}.middlewares=strip-prefix-${SERVICE_NAME}"
       - "traefik.http.middlewares.strip-prefix-${SERVICE_NAME}.stripprefix.prefixes=/${SERVICE_NAME}"
     networks:
