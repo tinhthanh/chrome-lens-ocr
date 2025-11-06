@@ -1,24 +1,29 @@
 version: '3.8'
 
 services:
-   vg-ocr-api:
-    image: tinhthanh/vg-ocr-api:v1.0.1
+  vg-ocr-api:
+    image: ${DOCKERHUB_USERNAME}/vg-ocr-api:latest
     container_name: vg-ocr-api
-    ports:
-      - "3001:3000"
+    restart: unless-stopped
     environment:
       - NODE_ENV=production
       - PORT=3000
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "const http = require('http'); const options = { hostname: 'localhost', port: 3000, path: '/health', timeout: 2000 }; const req = http.request(options, (res) => { if (res.statusCode === 200) process.exit(0); else process.exit(1); }); req.on('error', () => process.exit(1)); req.on('timeout', () => process.exit(1)); req.end();"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ocr-api.rule=(Host(`cluster.phanmemvet.vn`) || Host(`cluster.petplus.vn`)) && PathPrefix(`/ocr-api`)"
+      - "traefik.http.routers.ocr-api.entrypoints=web"
+      - "traefik.http.services.ocr-api-service.loadbalancer.server.port=3000"
+      - "traefik.http.routers.ocr-api.middlewares=strip-prefix-ocr-api"
+      - "traefik.http.middlewares.strip-prefix-ocr-api.stripprefix.prefixes=/ocr-api"
     networks:
-      - ocr-network
+      - traefik_proxy
 
 networks:
-  ocr-network:
-    driver: bridge
+  traefik_proxy:
+    external: true
