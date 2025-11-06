@@ -65,7 +65,6 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           
           script: |
-            # Dừng script ngay lập tức nếu có bất kỳ lệnh nào thất bại
             set -e
 
             echo "🚀 Starting deployment for service: ${{ env.SERVICE_NAME }}"
@@ -82,18 +81,17 @@ jobs:
             
             echo "Creating .env file for Docker Compose..."
             cat << EOF > .env
-            # File này được tạo tự động bởi GitHub Actions
             DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
             SERVICE_NAME=${{ env.SERVICE_NAME }}
             EOF
             
             echo " pulling latest image from DockerHub..."
-            # SỬA LỖI: Dùng lệnh 'docker compose' (V2) thay vì 'docker-compose' (V1)
-            docker compose -f docker-compose.prod.yml pull
+            # QUAY LẠI DÙNG V1 VÀ THÊM --env-file ĐỂ ĐẢM BẢO
+            docker-compose --env-file .env -f docker-compose.prod.yml pull
             
             echo " starting containers with the new image..."
-            # SỬA LỖI: Dùng lệnh 'docker compose' (V2)
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            # QUAY LẠI DÙNG V1 VÀ THÊM --env-file
+            docker-compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
             
             echo " cleaning up old images..."
             docker image prune -f
