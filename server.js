@@ -43,13 +43,13 @@ app.get('/health', (req, res) => {
 });
 
 // API documentation endpoint
-app.get('/', (req, res) => {
+app.get('/api', (req, res) => {
     res.json({
         service: 'Chrome Lens OCR API',
         version: '1.0.0',
         endpoints: {
-            'GET /': 'API documentation',
             'GET /health': 'Health check',
+            'GET /api': 'API documentation',
             'POST /ocr/file': 'OCR from uploaded file',
             'POST /ocr/url': 'OCR from image URL',
             'POST /ocr/base64': 'OCR from base64 encoded image'
@@ -187,5 +187,6 @@ app.use((req, res) => {
 app.listen(port, '0.0.0.0', () => {
     console.log(`Chrome Lens OCR API server running on port ${port}`);
     console.log(`Health check: http://localhost:${port}/health`);
-    console.log(`API docs: http://localhost:${port}/`);
+    console.log(`API docs: http://localhost:${port}/api`);
+    console.log(`Web UI: http://localhost:${port}/`);
 });

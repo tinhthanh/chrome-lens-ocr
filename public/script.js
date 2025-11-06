@@ -1,5 +1,18 @@
-// API Configuration
-const API_BASE = window.location.origin;
+// API Configuration - Auto-detect base path from current URL
+function detectBasePath() {
+    const path = window.location.pathname;
+    // Loại bỏ /index.html nếu có
+    const cleanPath = path.replace(/\/index\.html$/, '');
+    // Nếu path là '/' hoặc rỗng thì không có base path
+    if (cleanPath === '/' || cleanPath === '') {
+        return '';
+    }
+    // Loại bỏ trailing slash
+    return cleanPath.replace(/\/$/, '');
+}
+
+const BASE_PATH = detectBasePath();
+const API_BASE = window.location.origin + BASE_PATH;
 
 // Global variables
 let currentImageData = null;
