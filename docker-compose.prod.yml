@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  vg-ocr-api:
-    image: ${DOCKERHUB_USERNAME}/vg-ocr-api:latest
-    container_name: vg-ocr-api
+  ${SERVICE_NAME}:
+    image: ${DOCKERHUB_USERNAME}/${SERVICE_NAME}:latest
+    container_name: ${SERVICE_NAME}
     restart: unless-stopped
     environment:
       - NODE_ENV=production
@@ -24,11 +24,11 @@ services:
       start_period: 40s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.ocr-api.rule=(Host(`cluster.phanmemvet.vn`) || Host(`cluster.petplus.vn`)) && PathPrefix(`/ocr-api`)"
-      - "traefik.http.routers.ocr-api.entrypoints=web"
-      - "traefik.http.services.ocr-api-service.loadbalancer.server.port=3000"
-      - "traefik.http.routers.ocr-api.middlewares=strip-prefix-ocr-api"
-      - "traefik.http.middlewares.strip-prefix-ocr-api.stripprefix.prefixes=/ocr-api"
+      - "traefik.http.routers.${SERVICE_NAME}.rule=(Host(`cluster.phanmemvet.vn`) || Host(`cluster.petplus.vn`)) && PathPrefix(`/${SERVICE_NAME}`)"
+      - "traefik.http.routers.${SERVICE_NAME}.entrypoints=web"
+      - "traefik.http.services.${SERVICE_NAME}-service.loadbalancer.server.port=3000"
+      - "traefik.http.routers.${SERVICE_NAME}.middlewares=strip-prefix-${SERVICE_NAME}"
+      - "traefik.http.middlewares.strip-prefix-${SERVICE_NAME}.stripprefix.prefixes=/${SERVICE_NAME}"
     networks:
       - traefik_proxy
 

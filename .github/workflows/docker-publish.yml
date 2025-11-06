@@ -7,8 +7,12 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+# Chỉ cần thay đổi giá trị ở đây khi bạn deploy một service mới.
+env:
+  SERVICE_NAME: vg-ocr-api
+
 jobs:
-  # === JOB 1: BUILD VÀ PUSH IMAGE LÊN DOCKER HUB (KHÔNG THAY ĐỔI) ===
+  # === JOB 1: BUILD VÀ PUSH IMAGE LÊN DOCKER HUB ===
   build-and-push:
     name: Build and Push to Docker Hub
     runs-on: ubuntu-latest
@@ -18,7 +22,6 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
@@ -35,30 +38,24 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/vg-ocr-api:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/vg-ocr-api:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.SERVICE_NAME }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
 
-  # === JOB 2: DEPLOY IMAGE LÊN SERVER (SỬ DỤNG PHƯƠNG PHÁP BASE64 - RẤT ỔN ĐỊNH) ===
+  # === JOB 2: DEPLOY IMAGE LÊN SERVER ===
   deploy:
     name: Deploy to Production Server
     needs: build-and-push
     runs-on: ubuntu-latest
     
     steps:
-      # Bước 1: Checkout code để có thể truy cập file docker-compose.prod.yml
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # BƯỚC 2: Đọc và MÃ HÓA Base64 nội dung file, sau đó lưu vào output
-      # Phương pháp này biến file nhiều dòng thành một chuỗi an toàn duy nhất.
       - name: Read and Base64 Encode docker-compose file
         id: read_file
         run: |
-          # Dùng cú pháp NAME=VALUE đơn giản và đáng tin cậy.
-          # base64 -w0 đảm bảo không có ngắt dòng trong chuỗi mã hóa.
           echo "content=$(base64 -w0 docker-compose.prod.yml)" >> $GITHUB_OUTPUT
 
-      # Bước 3: SSH vào server và sử dụng output đã được mã hóa
       - name: Deploy to Server via SSH
         uses: appleboy/ssh-action@master
         with:
@@ -68,21 +65,22 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           
           script: |
-            echo "🚀 Starting deployment..."
+            echo "🚀 Starting deployment for service: ${{ env.SERVICE_NAME }}"
             
-            TARGET_DIR="/home/vetgo/cicd/app_services/repo/vg-ocr-api"
+            # Tối ưu hóa: Sử dụng biến SERVICE_NAME cho đường dẫn
+            TARGET_DIR="/home/vetgo/cicd/app_services/repo/${{ env.SERVICE_NAME }}"
             
             echo "Ensuring deployment directory exists at $TARGET_DIR"
             mkdir -p $TARGET_DIR
             
-            # GIẢI MÃ chuỗi base64 và ghi lại nội dung gốc vào file trên server.
             echo "Writing docker-compose.prod.yml from source code..."
-            # Dấu | (pipe) sẽ gửi chuỗi base64 đến lệnh base64 -d để giải mã.
             echo "${{ steps.read_file.outputs.content }}" | base64 -d > $TARGET_DIR/docker-compose.prod.yml
             
             cd $TARGET_DIR
             
+            # MỚI: Truyền cả SERVICE_NAME vào môi trường của server
             export DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
+            export SERVICE_NAME=${{ env.SERVICE_NAME }}
             
             echo " pulling latest image from DockerHub..."
             docker-compose -f docker-compose.prod.yml pull
