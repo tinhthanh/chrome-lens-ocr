@@ -24,12 +24,22 @@ services:
       start_period: 40s
     labels:
       - "traefik.enable=true"
+      # Định nghĩa router và rule
       - "traefik.http.routers.${SERVICE_NAME}.rule=(Host(`cluster.phanmemvet.vn`) || Host(`cluster.petplus.vn`)) && PathPrefix(`/${SERVICE_NAME}`)"
+      # Chỉ định cổng vào
       - "traefik.http.routers.${SERVICE_NAME}.entrypoints=web"
-      - "traefik.http.services.${SERVICE_NAME}.loadbalancer.server.service=app"
-      - "traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port=3000"
+      # SỬA LỖI: Nói rõ cho router biết nó phải sử dụng service nào của Traefik
+      - "traefik.http.routers.${SERVICE_NAME}.service=${SERVICE_NAME}-svc"
+      # Gắn middleware
       - "traefik.http.routers.${SERVICE_NAME}.middlewares=strip-prefix-${SERVICE_NAME}"
+      # === CẤU HÌNH MIDDLEWARE ===
+      # Định nghĩa middleware để cắt bỏ tiền tố URL
       - "traefik.http.middlewares.strip-prefix-${SERVICE_NAME}.stripprefix.prefixes=/${SERVICE_NAME}"
+      # === CẤU HÌNH SERVICE CỦA TRAEFIK ===
+      # Định nghĩa service của Traefik và chỉ cho nó biết phải trỏ vào đâu
+      - "traefik.http.services.${SERVICE_NAME}-svc.loadbalancer.server.service=app"
+      - "traefik.http.services.${SERVICE_NAME}-svc.loadbalancer.server.port=3000"
+
     networks:
       - traefik_proxy
 
