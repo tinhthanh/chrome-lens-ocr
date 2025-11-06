@@ -80,8 +80,6 @@ jobs:
             
             cd $TARGET_DIR
             
-            # TẠO FILE .env ĐỂ DOCKER-COMPOSE TỰ ĐỘNG ĐỌC BIẾN
-            # Đây là cách làm ổn định và được khuyến nghị nhất.
             echo "Creating .env file for Docker Compose..."
             cat << EOF > .env
             # File này được tạo tự động bởi GitHub Actions
@@ -90,11 +88,12 @@ jobs:
             EOF
             
             echo " pulling latest image from DockerHub..."
-            # Docker Compose sẽ tự động đọc file .env trong cùng thư mục
-            docker-compose -f docker-compose.prod.yml pull
+            # SỬA LỖI: Dùng lệnh 'docker compose' (V2) thay vì 'docker-compose' (V1)
+            docker compose -f docker-compose.prod.yml pull
             
             echo " starting containers with the new image..."
-            docker-compose -f docker-compose.prod.yml up -d --remove-orphans
+            # SỬA LỖI: Dùng lệnh 'docker compose' (V2)
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
             
             echo " cleaning up old images..."
             docker image prune -f
