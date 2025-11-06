@@ -1,70 +1,66 @@
-# Tên của toàn bộ quy trình, sẽ hiển thị trên tab Actions của GitHub
+# Tên của toàn bộ quy trình
 name: Build, Push, and Deploy Docker Image
 
-# Kích hoạt quy trình khi có code mới được đẩy lên nhánh "main"
+# Kích hoạt quy trình
 on:
   push:
     branches: [ "main" ]
-  # Tùy chọn: Thêm dòng này để có thể chạy thủ công từ giao diện GitHub
   workflow_dispatch:
 
-# Định nghĩa các công việc (jobs) sẽ được thực thi
 jobs:
-  # === JOB 1: BUILD VÀ PUSH IMAGE LÊN DOCKER HUB ===
+  # === JOB 1: BUILD VÀ PUSH IMAGE LÊN DOCKER HUB (KHÔNG THAY ĐỔI) ===
   build-and-push:
     name: Build and Push to Docker Hub
     runs-on: ubuntu-latest
     steps:
-      # Bước 1: Lấy mã nguồn từ repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Bước 2: Cài đặt QEMU để giả lập các kiến trúc CPU khác (cần cho build đa nền tảng)
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
 
-      # Bước 3: Cài đặt Docker Buildx, công cụ build mạnh mẽ của Docker
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # Bước 4: Đăng nhập vào Docker Hub sử dụng secrets
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Bước 5: Build và push image đa nền tảng (amd64 và arm64)
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           context: .
-          # Kích hoạt tính năng build cho nhiều nền tảng
           platforms: linux/amd64,linux/arm64
-          # Đẩy image lên registry sau khi build thành công
           push: true
-          # Gắn các tag cho image. Ở đây là "latest" và mã hash của commit
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/vg-ocr-api:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/vg-ocr-api:${{ github.sha }}
 
-  # === JOB 2: DEPLOY IMAGE LÊN SERVER ===
+  # === JOB 2: DEPLOY IMAGE LÊN SERVER (PHIÊN BẢN ĐÃ SỬA LỖI) ===
   deploy:
     name: Deploy to Production Server
     needs: build-and-push
     runs-on: ubuntu-latest
     
-    # MỚI: Định nghĩa biến môi trường cho toàn bộ job này
-    env:
-      # Đọc toàn bộ nội dung của file docker-compose.prod.yml và lưu vào biến DOCKER_COMPOSE_CONTENT
-      DOCKER_COMPOSE_CONTENT: ${{ toJSON(fromJSON(file('docker-compose.prod.yml'))) }}
-
     steps:
       # Bước 1: Checkout code để có thể truy cập file docker-compose.prod.yml
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Bước 2: SSH vào server và thực thi các lệnh deploy
+      # BƯỚC MỚI: Đọc nội dung file và lưu vào biến môi trường
+      # Đây là cách làm đúng để xử lý file trong workflow
+      - name: Read docker-compose.prod.yml content
+        id: read_file
+        run: |
+          # Dùng cú pháp đặc biệt của GitHub Actions để tạo biến môi trường DOCKER_COMPOSE_CONTENT
+          # cho các bước tiếp theo. Kỹ thuật "here document" (<<EOF) đảm bảo nội dung nhiều dòng được giữ nguyên.
+          echo "DOCKER_COMPOSE_CONTENT<<EOF" >> $GITHUB_ENV
+          cat docker-compose.prod.yml >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      # Bước 3: SSH vào server và thực thi các lệnh deploy
       - name: Deploy to Server via SSH
         uses: appleboy/ssh-action@master
         with:
@@ -73,37 +69,30 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           
-          # Script đã được rút gọn và thông minh hơn rất nhiều
+          # Script không thay đổi, nó sẽ sử dụng biến môi trường đã được tạo ở bước trên
           script: |
             echo "🚀 Starting deployment..."
             
-            # 1. Định nghĩa biến cho đường dẫn
             TARGET_DIR="/home/vetgo/cicd/app_services/repo/vg-ocr-api"
             
-            # 2. Đảm bảo thư mục tồn tại
             echo "Ensuring deployment directory exists at $TARGET_DIR"
             mkdir -p $TARGET_DIR
             
-            # 3. MỚI & QUAN TRỌNG: Ghi nội dung file từ biến môi trường lên server
-            # Không cần hardcode nữa, nội dung được lấy trực tiếp từ mã nguồn!
+            # Ghi nội dung file từ biến môi trường đã được đọc ở bước trước
             echo "Writing docker-compose.prod.yml from source code..."
-            echo "${{ env.DOCKER_COMPOSE_CONTENT }}" > $TARGET_DIR/docker-compose.prod.yml
+            # Biến DOCKER_COMPOSE_CONTENT giờ đã có sẵn để sử dụng
+            echo "$DOCKER_COMPOSE_CONTENT" > $TARGET_DIR/docker-compose.prod.yml
             
-            # 4. Di chuyển vào thư mục deploy
             cd $TARGET_DIR
             
-            # 5. Export biến môi trường DOCKERHUB_USERNAME để Docker Compose sử dụng
             export DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
             
-            # 6. Kéo image mới nhất
             echo " pulling latest image from DockerHub..."
             docker-compose -f docker-compose.prod.yml pull
             
-            # 7. Khởi động lại service
             echo " starting containers with the new image..."
             docker-compose -f docker-compose.prod.yml up -d --remove-orphans
             
-            # 8. Dọn dẹp
             echo " cleaning up old images..."
             docker image prune -f
             
