@@ -38,7 +38,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/vg-ocr-api:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/vg-ocr-api:${{ github.sha }}
 
-  # === JOB 2: DEPLOY IMAGE LÊN SERVER (SỬ DỤNG STEP OUTPUTS - CÁCH LÀM ĐÚNG) ===
+  # === JOB 2: DEPLOY IMAGE LÊN SERVER (SỬ DỤNG PHƯƠNG PHÁP BASE64 - RẤT ỔN ĐỊNH) ===
   deploy:
     name: Deploy to Production Server
     needs: build-and-push
@@ -49,17 +49,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # BƯỚC 2: Đọc nội dung file và lưu vào một STEP OUTPUT
-      # Đây là phương pháp chính xác để truyền dữ liệu nhiều dòng giữa các bước.
-      - name: Read docker-compose.prod.yml content to an output variable
-        id: read_file # Đặt ID cho bước này để có thể tham chiếu đến output của nó
+      # BƯỚC 2: Đọc và MÃ HÓA Base64 nội dung file, sau đó lưu vào output
+      # Phương pháp này biến file nhiều dòng thành một chuỗi an toàn duy nhất.
+      - name: Read and Base64 Encode docker-compose file
+        id: read_file
         run: |
-          # Sử dụng cú pháp GITHUB_OUTPUT để tạo một output tên là 'content'
-          echo "content<<EOF" >> $GITHUB_OUTPUT
-          cat docker-compose.prod.yml >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Dùng cú pháp NAME=VALUE đơn giản và đáng tin cậy.
+          # base64 -w0 đảm bảo không có ngắt dòng trong chuỗi mã hóa.
+          echo "content=$(base64 -w0 docker-compose.prod.yml)" >> $GITHUB_OUTPUT
 
-      # Bước 3: SSH vào server và sử dụng output từ bước trước
+      # Bước 3: SSH vào server và sử dụng output đã được mã hóa
       - name: Deploy to Server via SSH
         uses: appleboy/ssh-action@master
         with:
@@ -76,10 +75,10 @@ jobs:
             echo "Ensuring deployment directory exists at $TARGET_DIR"
             mkdir -p $TARGET_DIR
             
-            # Ghi nội dung file từ output của bước 'read_file'
+            # GIẢI MÃ chuỗi base64 và ghi lại nội dung gốc vào file trên server.
             echo "Writing docker-compose.prod.yml from source code..."
-            # Tham chiếu đến output bằng cú pháp: steps.<step_id>.outputs.<output_name>
-            echo "${{ steps.read_file.outputs.content }}" > $TARGET_DIR/docker-compose.prod.yml
+            # Dấu | (pipe) sẽ gửi chuỗi base64 đến lệnh base64 -d để giải mã.
+            echo "${{ steps.read_file.outputs.content }}" | base64 -d > $TARGET_DIR/docker-compose.prod.yml
             
             cd $TARGET_DIR
             
