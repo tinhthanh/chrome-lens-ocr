@@ -177,16 +177,18 @@ function displayResults(result, imageUrl, metadata) {
     document.getElementById('error-container').classList.add('hidden');
     
     // Display image with overlays
-    displayImageWithOverlays(imageUrl, result.data.segments);
-    
+    // Lens result is primary; fall back to Apple Vision when Lens failed
+    const primary = result.data || result.apple;
+    displayImageWithOverlays(imageUrl, primary.segments);
+
     // Display metadata
     displayImageInfo(metadata, result.metadata);
-    
+
     // Display OCR summary
-    displayOCRSummary(result.data);
-    
+    displayOCRSummary(result);
+
     // Display text segments
-    displayTextSegments(result.data.segments);
+    displayTextSegments(primary.segments);
 }
 
 // Display image with text overlays
@@ -275,13 +277,33 @@ function displayImageInfo(metadata, apiMetadata) {
 }
 
 // Display OCR summary
-function displayOCRSummary(data) {
+function displayOCRSummary(result) {
     const container = document.getElementById('ocr-summary');
-    const info = [
-        `<div><strong>Language:</strong> ${data.language || 'Unknown'}</div>`,
-        `<div><strong>Text segments:</strong> ${data.segments.length}</div>`,
-        `<div><strong>Total text:</strong> ${data.segments.map(s => s.text).join(' ')}</div>`
-    ];
+    const info = [];
+    const lensStatus = result.engines?.lens;
+    const appleStatus = result.engines?.apple;
+
+    if (result.data) {
+        const data = result.data;
+        info.push(
+            `<div class="font-medium text-gray-700">Google Lens${lensStatus ? ` (${lensStatus.ms} ms)` : ''}</div>`,
+            `<div><strong>Language:</strong> ${data.language || 'Unknown'}</div>`,
+            `<div><strong>Text segments:</strong> ${data.segments.length}</div>`,
+            `<div><strong>Total text:</strong> ${data.segments.map(s => s.text).join(' ')}</div>`
+        );
+    } else if (lensStatus) {
+        info.push(`<div class="text-red-600"><strong>Google Lens:</strong> ${escapeHtml(lensStatus.error)}</div>`);
+    }
+
+    if (result.apple) {
+        info.push(
+            `<div class="font-medium text-gray-700 mt-3">Apple Vision (${appleStatus.mode}, ${appleStatus.ms} ms)</div>`,
+            `<div><strong>Text segments:</strong> ${result.apple.segments.length}</div>`,
+            `<div><strong>Total text:</strong> ${escapeHtml(result.apple.segments.map(s => s.text).join(' '))}</div>`
+        );
+    } else if (appleStatus) {
+        info.push(`<div class="text-gray-500 mt-3"><strong>Apple Vision:</strong> ${escapeHtml(appleStatus.reason || appleStatus.error)}</div>`);
+    }
     
     container.innerHTML = info.join('');
 }
@@ -370,6 +392,12 @@ function showError(message) {
     document.getElementById('error-message').textContent = message;
     document.getElementById('error-container').classList.remove('hidden');
     document.getElementById('results-container').classList.add('hidden');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text ?? '';
+    return div.innerHTML;
 }
 
 // Format file size

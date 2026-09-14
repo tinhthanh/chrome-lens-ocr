@@ -21,9 +21,15 @@ Kiểm tra trạng thái của service.
   "status": "OK",
   "service": "Chrome Lens OCR API",
   "version": "1.0.0",
-  "timestamp": "2025-08-21T08:49:45.737Z"
+  "timestamp": "2025-08-21T08:49:45.737Z",
+  "engines": {
+    "lens": { "available": true },
+    "apple": { "available": true, "mode": "local" }
+  }
 }
 ```
+
+`engines.apple` cho biết Apple Vision OCR có dùng được không (xem mục [Apple Vision OCR](#apple-vision-ocr-macos)).
 
 ### 2. API Documentation
 **GET** `/`
@@ -185,6 +191,83 @@ curl -X POST http://localhost:3000/ocr/base64 \
   }
 }
 ```
+
+## Apple Vision OCR (macOS)
+
+Ngoài Google Lens, các endpoint `/ocr/*` trả thêm kết quả của Apple Vision OCR khi server phát hiện có thể dùng được. Hai engine chạy song song; một engine lỗi không làm hỏng request nếu engine còn lại thành công.
+
+### Cách server phát hiện
+1. `APPLE_OCR_URL` được set → **remote**: chuyển ảnh sang một instance server chạy native trên Mac.
+2. Server chạy native trên macOS và có binary `bin/apple-ocr` → **local**: gọi Vision framework trực tiếp.
+3. Còn lại (ví dụ Docker/Linux) → Apple OCR bị bỏ qua, `apple: null`.
+
+Docker trên Mac chạy trong VM Linux nên container không thể gọi Vision trực tiếp, cần dùng chế độ remote. Hướng dẫn cài đặt đầy đủ trên máy mới: [SETUP.md](SETUP.md).
+
+### Chạy native trên Mac
+```bash
+npm install
+npm run build:apple        # biên dịch apple-ocr/AppleOCR.swift -> bin/apple-ocr
+npm run server             # /health sẽ báo engines.apple.mode = "local"
+```
+
+### Docker trên Mac (remote)
+```bash
+# 1. Server native trên host, chỉ lắng nghe localhost
+PORT=3001 HOST=127.0.0.1 npm run server
+
+# 2. Container chuyển Apple OCR sang host
+APPLE_OCR_URL=http://host.docker.internal:3001 docker compose up -d --build
+```
+
+### Query parameters
+| Param | Mô tả |
+|---|---|
+| `engines` | `lens`, `apple` hoặc `lens,apple` (mặc định: cả hai, Apple chỉ chạy khi available) |
+| `appleLangs` | Ngôn ngữ cho Apple Vision, ví dụ `vi-VT,en-US` hoặc `ja-JP,zh-Hans`. Mặc định tự nhận diện |
+
+Lưu ý: Apple dùng mã `vi-VT` cho tiếng Việt. Apple Vision không nhận diện tốt nhiều hệ chữ khác nhau trong cùng một ảnh (ví dụ Nhật + Hàn).
+
+**Example:**
+```bash
+curl -X POST "http://localhost:3000/ocr/file?appleLangs=vi-VT,en-US" \
+  -F "image=@/path/to/your/image.png"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": { "language": "en", "segments": [ ... ] },
+  "apple": {
+    "engine": "apple-vision",
+    "languages": ["auto"],
+    "elapsedMs": 412,
+    "segments": [
+      {
+        "text": "as shrimple as that",
+        "confidence": 1,
+        "boundingBox": {
+          "centerPerX": 0.523,
+          "centerPerY": 0.13,
+          "perWidth": 0.245,
+          "perHeight": 0.043,
+          "pixelCoords": { "x": 222, "y": 46, "width": 136, "height": 18 }
+        }
+      }
+    ]
+  },
+  "engines": {
+    "lens": { "ok": true, "ms": 3338 },
+    "apple": { "ok": true, "available": true, "mode": "remote", "ms": 1858 }
+  },
+  "metadata": { "filename": "image.png", "size": 12345, "mimetype": "image/png" }
+}
+```
+
+- `data`: kết quả Google Lens (giữ nguyên như trước), `null` nếu Lens lỗi hoặc không được chọn.
+- `apple`: kết quả Apple Vision, cùng cấu trúc `Segment` với thêm `confidence` (0..1); `null` nếu không khả dụng hoặc lỗi.
+- `engines.<name>`: trạng thái từng engine, gồm `ms`, và `error` hoặc `reason` khi không thành công.
+- Chỉ trả HTTP 500 khi tất cả engine được chọn đều lỗi.
 
 ## Error Responses
 
