@@ -5,3 +5,4 @@ afData.json
 bun.lock
 bin/
 .env
+.run/

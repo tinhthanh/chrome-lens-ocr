@@ -124,6 +124,21 @@ Không set `APPLE_OCR_URL`. API chỉ chạy Google Lens, response có `apple: n
 
 Production dùng `docker-compose.prod.yml` qua GitHub Actions: mỗi lần push lên `main` sẽ build image và deploy. Không cần cấu hình thêm cho Apple OCR.
 
+## Chạy nền bằng run.sh / stop.sh (Mac)
+
+Chạy toàn bộ hệ thống bằng một lệnh, tiếp tục chạy kể cả khi đóng VS Code hoặc terminal:
+
+```bash
+./run.sh     # server Apple OCR (3001) + container (3000) + Cloudflare tunnel
+./stop.sh    # tắt tunnel, container và server Apple OCR
+```
+
+`run.sh` tự làm các bước sau nếu cần: `npm ci`, `npm run build:apple` (build lại khi `AppleOCR.swift` thay đổi), thêm `APPLE_OCR_URL` vào `.env`, mở Docker Desktop, rồi build và chạy container. Chạy lại nhiều lần không sao; thành phần nào đang chạy sẽ được bỏ qua. Tunnel chỉ chạy khi có file `~/.cloudflared/ocr-01.yml`.
+
+Log nằm trong `.run/` (`apple.log`, `docker.log`, `tunnel.log`). Có thể đổi cấu hình bằng biến môi trường: `APPLE_PORT`, `API_PORT`, `TUNNEL_NAME`, `TUNNEL_CONFIG`, `PUBLIC_URL`.
+
+Các tiến trình này không tự chạy lại sau khi khởi động lại máy. Khi đó chạy lại `./run.sh`, hoặc dùng launchd như mục dưới.
+
 ## Tuỳ chọn: tự khởi động server Apple OCR bằng launchd
 
 Để server ở bước A.3 tự chạy khi đăng nhập và tự khởi động lại khi bị crash, tạo LaunchAgent.
