@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node sharex.js",
     "server": "node server.js",
+    "build:apple": "mkdir -p bin && swiftc -O apple-ocr/AppleOCR.swift -o bin/apple-ocr",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": "./cli.js",
