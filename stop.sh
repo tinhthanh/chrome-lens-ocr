@@ -1,17 +1,10 @@
 #!/usr/bin/env bash
-# Stop everything started by run.sh: Cloudflare tunnel, Docker container and
-# the native Apple Vision OCR server.
+# Stop everything started by run.sh: Cloudflare tunnel, Docker container
+# (docker mode) and the native OCR server.
 set -uo pipefail
 
-cd "$(dirname "$0")"
-RUN_DIR="$(pwd)/.run"
-
-APPLE_PORT="${APPLE_PORT:-3001}"
-TUNNEL_NAME="${TUNNEL_NAME:-ocr-01}"
-TUNNEL_CONFIG="${TUNNEL_CONFIG:-$HOME/.cloudflared/$TUNNEL_NAME.yml}"
-
-log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-ok()   { printf '\033[1;32m  ✓\033[0m %s\n' "$*"; }
+source "$(dirname "$0")/scripts/common.sh"
+cd "$ROOT"
 
 # matching_pids <pattern> <candidate pids...>: keep only live pids whose command contains pattern
 matching_pids() {
@@ -46,22 +39,27 @@ stop_pids() {
 
 # --- 1. Cloudflare tunnel -----------------------------------------------------
 log "Cloudflare tunnel ($TUNNEL_NAME)"
-candidates=$(cat "$RUN_DIR/tunnel.pid" 2>/dev/null; pgrep -f "cloudflared tunnel --config $TUNNEL_CONFIG run")
+candidates=$(cat "$RUN_DIR/tunnel.pid" 2>/dev/null; tunnel_pids)
 # shellcheck disable=SC2086
 stop_pids tunnel $(matching_pids "cloudflared tunnel" $candidates)
 rm -f "$RUN_DIR/tunnel.pid"
 
-# --- 2. Docker container ------------------------------------------------------
-log "Docker container"
-if docker info >/dev/null 2>&1; then
-    docker compose down >"$RUN_DIR/docker-down.log" 2>&1 && ok "container removed" || cat "$RUN_DIR/docker-down.log"
-else
-    ok "Docker is not running"
+# --- 2. Docker container (docker mode) ---------------------------------------
+if [[ "$RUN_MODE" == docker ]]; then
+    log "Docker container"
+    if ! command -v docker >/dev/null || ! docker info >/dev/null 2>&1; then
+        ok "Docker is not running"
+    elif [[ -z "$(docker compose ps -q 2>/dev/null)" ]]; then
+        ok "container not running"
+    else
+        docker compose down >"$RUN_DIR/docker-down.log" 2>&1 && ok "container removed" || cat "$RUN_DIR/docker-down.log"
+    fi
 fi
 
-# --- 3. Apple Vision OCR server ------------------------------------------------
-log "Apple Vision OCR server (port $APPLE_PORT)"
-candidates=$(cat "$RUN_DIR/apple.pid" 2>/dev/null; lsof -ti "tcp:$APPLE_PORT" -sTCP:LISTEN 2>/dev/null)
+# --- 3. Native server ---------------------------------------------------------
+log "Native OCR server (port $SERVER_PORT)"
+# apple.pid is the pid file name used by older versions of run.sh
+candidates=$(cat "$RUN_DIR/server.pid" "$RUN_DIR/apple.pid" 2>/dev/null; lsof -ti "tcp:$SERVER_PORT" -sTCP:LISTEN 2>/dev/null)
 # shellcheck disable=SC2086
-stop_pids apple $(matching_pids "server.js" $candidates)
-rm -f "$RUN_DIR/apple.pid"
+stop_pids server $(matching_pids "server.js" $candidates)
+rm -f "$RUN_DIR/server.pid" "$RUN_DIR/apple.pid"
