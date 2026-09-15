@@ -25,6 +25,7 @@ Chọn một trong ba cách setup:
 | [A. Mac + Docker](#a-mac--docker-khuyến-nghị) | Dev/test trên Mac, giống môi trường production | Có (remote) |
 | [B. Mac native](#b-mac-native-không-docker) | Chạy nhanh trên Mac, không cần Docker | Có (local) |
 | [C. Linux / server](#c-linux--server) | Production, CI | Không |
+| [D. Mac khác bằng gói](#d-cài-lên-mac-khác-bằng-gói-native-không-docker) | Thêm máy Mac chạy OCR, không cần Docker | Có (local) |
 
 ## Yêu cầu
 
@@ -135,9 +136,70 @@ Chạy toàn bộ hệ thống bằng một lệnh, tiếp tục chạy kể c�
 
 `run.sh` tự làm các bước sau nếu cần: `npm ci`, `npm run build:apple` (build lại khi `AppleOCR.swift` thay đổi), thêm `APPLE_OCR_URL` vào `.env`, mở Docker Desktop, rồi build và chạy container. Chạy lại nhiều lần không sao; thành phần nào đang chạy sẽ được bỏ qua. Tunnel chỉ chạy khi có file `~/.cloudflared/ocr-01.yml`.
 
-Log nằm trong `.run/` (`apple.log`, `docker.log`, `tunnel.log`). Có thể đổi cấu hình bằng biến môi trường: `APPLE_PORT`, `API_PORT`, `TUNNEL_NAME`, `TUNNEL_CONFIG`, `PUBLIC_URL`.
+Log nằm trong `.run/` (`server.log`, `docker.log`, `tunnel.log`).
+
+Cấu hình đọc từ biến môi trường hoặc file `.env`; biến môi trường được ưu tiên:
+
+| Biến | Mặc định | Mô tả |
+|---|---|---|
+| `RUN_MODE` | `docker` | `docker`: server Apple OCR (3001) + container (3000). `native`: một server chạy cả Lens và Apple ở cổng 3000, không cần Docker |
+| `API_PORT` | `3000` | Cổng API |
+| `APPLE_PORT` | `3001` | Cổng server Apple OCR (chế độ docker) |
+| `SERVER_HOST` | `127.0.0.1` | Địa chỉ lắng nghe của server native |
+| `TUNNEL_NAME` | `ocr-01` | Tên Cloudflare tunnel |
+| `TUNNEL_CONFIG` | `~/.cloudflared/<TUNNEL_NAME>.yml` | File cấu hình tunnel |
+| `PUBLIC_URL` | `https://<TUNNEL_NAME>.webmcp.vn` | Chỉ dùng để hiển thị |
 
 Các tiến trình này không tự chạy lại sau khi khởi động lại máy. Khi đó chạy lại `./run.sh`, hoặc dùng launchd như mục dưới.
+
+## D. Cài lên Mac khác bằng gói (native, không Docker)
+
+Dùng khi cần thêm một máy Mac chạy OCR, ví dụ `mac-ocr-b` với `ocr-02.webmcp.vn`. Máy đích chỉ cần Node.js 18+ và cloudflared; không cần Docker, Xcode hay `npm install`.
+
+### 1. Đóng gói (trên máy có repo, macOS)
+```bash
+./scripts/package-mac.sh
+# -> dist/chrome-lens-ocr-mac-<version>-<commit>.tar.gz
+```
+Gói gồm code, `node_modules` production có sharp cho cả Intel và Apple Silicon, `bin/apple-ocr` universal, `run.sh`, `stop.sh` và `.env.example`.
+
+### 2. Tạo tunnel cho máy mới (trên máy đã `cloudflared tunnel login`)
+```bash
+cloudflared tunnel create ocr-02
+cloudflared tunnel route dns ocr-02 ocr-02.webmcp.vn
+```
+Tạo file `ocr-02.yml`:
+```yaml
+tunnel: <TUNNEL_ID>
+credentials-file: /Users/<user>/.cloudflared/<TUNNEL_ID>.json
+ingress:
+  - hostname: ocr-02.webmcp.vn
+    service: http://127.0.0.1:3000
+  - service: http_status:404
+```
+Chép `ocr-02.yml` và `~/.cloudflared/<TUNNEL_ID>.json` sang `~/.cloudflared/` của máy đích, rồi `chmod 600` hai file đó. File `.json` là thông tin đăng nhập của tunnel, cần giữ bí mật.
+
+### 3. Cài trên máy đích
+```bash
+brew install cloudflared                      # nếu chưa có
+mkdir -p ~/apps
+tar -xzf chrome-lens-ocr-mac-*.tar.gz -C ~/apps
+mv ~/apps/chrome-lens-ocr-mac ~/apps/chrome-lens-ocr
+cd ~/apps/chrome-lens-ocr
+cp .env.example .env                          # RUN_MODE=native, TUNNEL_NAME, PUBLIC_URL
+./run.sh
+```
+Nên cài vào `~/apps` thay vì Desktop hay Documents, vì macOS có thể chặn tiến trình chạy nền đọc các thư mục đó.
+
+### Cập nhật lên gói mới
+```bash
+cd ~/apps
+./chrome-lens-ocr/stop.sh
+tar -xzf chrome-lens-ocr-mac-<phiên-bản-mới>.tar.gz
+cp chrome-lens-ocr/.env chrome-lens-ocr-mac/
+rm -rf chrome-lens-ocr && mv chrome-lens-ocr-mac chrome-lens-ocr
+./chrome-lens-ocr/run.sh
+```
 
 ## Tuỳ chọn: tự khởi động server Apple OCR bằng launchd
 

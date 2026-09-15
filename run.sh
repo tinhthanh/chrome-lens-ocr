@@ -1,32 +1,22 @@
 #!/usr/bin/env bash
-# Start the whole OCR stack on a Mac, detached from the terminal so it keeps
-# running after VS Code or the terminal is closed:
-#   1. native Apple Vision OCR server (port 3001)
-#   2. Docker container with the API (port 3000)
-#   3. Cloudflare tunnel (skipped when its config file does not exist)
+# Start the OCR stack on a Mac, detached from the terminal so it keeps running
+# after VS Code or the terminal is closed. RUN_MODE (in .env or the environment):
+#   docker (default): native Apple Vision OCR server (port 3001) + Docker
+#                     container with the API (port 3000) + Cloudflare tunnel
+#   native:           one native server with Lens and Apple OCR (port 3000)
+#                     + Cloudflare tunnel, no Docker needed
+# The tunnel is skipped when its config file does not exist.
 # Safe to run again: components that are already running are left alone.
 # Stop everything with ./stop.sh. Logs and pid files live in .run/
 set -euo pipefail
 
-cd "$(dirname "$0")"
-ROOT="$(pwd)"
-RUN_DIR="$ROOT/.run"
-
-APPLE_PORT="${APPLE_PORT:-3001}"
-API_PORT="${API_PORT:-3000}"
-TUNNEL_NAME="${TUNNEL_NAME:-ocr-01}"
-TUNNEL_CONFIG="${TUNNEL_CONFIG:-$HOME/.cloudflared/$TUNNEL_NAME.yml}"
-PUBLIC_URL="${PUBLIC_URL:-https://ocr-01.webmcp.vn}"
-
-log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-ok()   { printf '\033[1;32m  ✓\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m  !\033[0m %s\n' "$*"; }
-die()  { printf '\033[1;31m  ✗\033[0m %s\n' "$*" >&2; exit 1; }
+source "$(dirname "$0")/scripts/common.sh"
+cd "$ROOT"
 
 # Run a command in a new session, ignoring SIGHUP, so closing the terminal does not kill it
 detach() {
     local name="$1"; shift
-    nohup python3 -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' "$@" \
+    nohup perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or die "exec $ARGV[0]: $!\n"' "$@" \
         >"$RUN_DIR/$name.log" 2>&1 </dev/null &
     echo $! >"$RUN_DIR/$name.pid"
 }
@@ -43,51 +33,69 @@ wait_for() {
 
 healthy() { curl -fsS -m 2 "http://127.0.0.1:$1/health"; }
 tunnel_registered() { grep -q "Registered tunnel connection" "$RUN_DIR/tunnel.log"; }
-tunnel_pids() { pgrep -f "cloudflared tunnel --config $TUNNEL_CONFIG run"; }
+
+# apple_state <port>: "local", "remote" or "unavailable (reason)" from /health
+apple_state() {
+    healthy "$1" | node -e '
+        let s = "";
+        process.stdin.on("data", d => (s += d)).on("end", () => {
+            const a = JSON.parse(s).engines.apple;
+            console.log(a.available ? a.mode : `unavailable (${a.reason})`);
+        });'
+}
 
 # --- Prerequisites ----------------------------------------------------------
 [[ "$(uname)" == Darwin ]] || die "run.sh needs macOS (Apple Vision). On Linux use: docker compose up -d"
-for cmd in node npm docker python3 curl; do
+[[ "$RUN_MODE" == docker || "$RUN_MODE" == native ]] || die "RUN_MODE must be docker or native, got: $RUN_MODE"
+required=(node curl perl)
+[[ "$RUN_MODE" == docker ]] && required+=(docker)
+for cmd in "${required[@]}"; do
     command -v "$cmd" >/dev/null || die "$cmd not found"
 done
 mkdir -p "$RUN_DIR"
 
 if [[ ! -d node_modules ]]; then
     log "Installing Node dependencies"
-    npm ci
+    npm ci --omit=dev
 fi
+# Rebuild when the Swift source is newer (packaged installs ship only the binary)
 if [[ ! -x bin/apple-ocr || apple-ocr/AppleOCR.swift -nt bin/apple-ocr ]]; then
+    command -v swiftc >/dev/null || die "bin/apple-ocr is missing and swiftc is not installed (xcode-select --install)"
     log "Building Apple OCR binary"
     npm run build:apple >"$RUN_DIR/build.log" 2>&1 || { tail -20 "$RUN_DIR/build.log"; die "build failed"; }
 fi
-if ! grep -q '^APPLE_OCR_URL=' .env 2>/dev/null; then
+if [[ "$RUN_MODE" == docker ]] && ! grep -q '^APPLE_OCR_URL=' .env 2>/dev/null; then
     echo "APPLE_OCR_URL=http://host.docker.internal:$APPLE_PORT" >>.env
 fi
 
-# --- 1. Apple Vision OCR server ------------------------------------------------
-log "Apple Vision OCR server (port $APPLE_PORT)"
-if healthy "$APPLE_PORT" >/dev/null 2>&1; then
+# --- 1. Native server ---------------------------------------------------------
+if [[ "$RUN_MODE" == native ]]; then
+    log "OCR API server, Lens + Apple Vision (port $SERVER_PORT)"
+else
+    log "Apple Vision OCR server (port $SERVER_PORT)"
+fi
+if healthy "$SERVER_PORT" >/dev/null 2>&1; then
     ok "already running"
 else
-    detach apple env PORT="$APPLE_PORT" HOST=127.0.0.1 NODE_ENV=production node "$ROOT/server.js"
-    wait_for 30 healthy "$APPLE_PORT" || die "did not start, see .run/apple.log"
-    ok "started (pid $(cat "$RUN_DIR/apple.pid"))"
+    # APPLE_OCR_URL is for the container only; the native server must use Apple OCR locally
+    detach server env -u APPLE_OCR_URL PORT="$SERVER_PORT" HOST="$SERVER_HOST" NODE_ENV=production \
+        node "$ROOT/server.js"
+    wait_for 30 healthy "$SERVER_PORT" || die "did not start, see .run/server.log"
+    ok "started (pid $(cat "$RUN_DIR/server.pid")), Apple OCR: $(apple_state "$SERVER_PORT")"
 fi
 
-# --- 2. Docker container ------------------------------------------------------
-log "Docker container (port $API_PORT)"
-if ! docker info >/dev/null 2>&1; then
-    log "Starting Docker Desktop"
-    open -a Docker
-    wait_for 120 docker info || die "Docker Desktop did not start"
+# --- 2. Docker container (docker mode) ---------------------------------------
+if [[ "$RUN_MODE" == docker ]]; then
+    log "Docker container (port $API_PORT)"
+    if ! docker info >/dev/null 2>&1; then
+        log "Starting Docker Desktop"
+        open -a Docker
+        wait_for 120 docker info || die "Docker Desktop did not start"
+    fi
+    docker compose up -d --build >"$RUN_DIR/docker.log" 2>&1 || { tail -20 "$RUN_DIR/docker.log"; die "docker compose failed"; }
+    wait_for 60 healthy "$API_PORT" || die "API not responding, see: docker compose logs"
+    ok "running, Apple OCR: $(apple_state "$API_PORT")"
 fi
-docker compose up -d --build >"$RUN_DIR/docker.log" 2>&1 || { tail -20 "$RUN_DIR/docker.log"; die "docker compose failed"; }
-wait_for 60 healthy "$API_PORT" || die "API not responding, see: docker compose logs"
-apple_state=$(healthy "$API_PORT" | python3 -c '
-import json, sys
-a = json.load(sys.stdin)["engines"]["apple"]
-print(a["mode"] if a.get("available") else "unavailable (" + a.get("reason", "") + ")")')
-ok "running, Apple OCR: $apple_state"
 
 # --- 3. Cloudflare tunnel -----------------------------------------------------
 log "Cloudflare tunnel ($TUNNEL_NAME)"
@@ -105,5 +113,7 @@ fi
 
 echo
 ok "Local:  http://localhost:$API_PORT"
-[[ -f "$TUNNEL_CONFIG" ]] && ok "Public: $PUBLIC_URL"
+if [[ -f "$TUNNEL_CONFIG" ]]; then
+    ok "Public: $PUBLIC_URL"
+fi
 echo "     Logs: .run/*.log    Stop: ./stop.sh"
